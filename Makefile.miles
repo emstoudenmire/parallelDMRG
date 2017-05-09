@@ -1,0 +1,58 @@
+LIBRARY_DIR=$(HOME)/software/newitensor
+include $(LIBRARY_DIR)/this_dir.mk
+include $(LIBRARY_DIR)/options.mk
+
+################################################################
+#Options --------------
+
+HEADERS=parallel_dmrg.h partition.h
+
+ifdef app
+APP=$(app)
+else
+APP=pdmrg
+endif
+
+
+#################################################################
+
+MPI_CFLAGS=-I/usr/local/Cellar/open-mpi/1.10.1/include
+MPI_LFLAGS=-I/usr/local/Cellar/open-mpi/1.10.1/include -L/usr/local/opt/libevent/lib -L/usr/local/Cellar/open-mpi/1.10.1/lib -lmpi_cxx -lmpi
+
+OBJECTS=$(APP).o
+
+#Mappings --------------
+GOBJECTS=$(patsubst %,.debug_objs/%, $(OBJECTS))
+
+#Rules ------------------
+
+%.o: %.cc $(HEADERS)
+	$(CCCOM) $(MPI_CFLAGS) -c $(CCFLAGS) -o $@ $<
+
+.debug_objs/%.o: %.cc $(HEADERS)
+	$(CCCOM) $(MPI_CFLAGS) -c $(CCGFLAGS) -o $@ $<
+
+%.o: %.cpp $(HEADERS)
+	$(CCCOM) $(MPI_CFLAGS) -c $(CCFLAGS) -o $@ $<
+
+.debug_objs/%.o: %.cpp $(HEADERS)
+	$(CCCOM) $(MPI_CFLAGS) -c $(CCGFLAGS) -o $@ $<
+
+#Targets -----------------
+
+default: build
+
+build: $(APP)
+debug: $(APP)-g
+
+$(APP): $(OBJECTS) 
+	$(CCCOM) $(MPI_LFLAGS) $(CCFLAGS) $(OBJECTS) -o $(APP) $(LIBFLAGS)
+
+$(APP)-g: mkdebugdir $(GOBJECTS) $(ITENSOR_GLIBS)
+	$(CCCOM) $(MPI_LFLAGS) $(CCGFLAGS) $(GOBJECTS) -o $(APP)-g $(LIBGFLAGS)
+
+mkdebugdir:
+	mkdir -p .debug_objs
+
+clean:
+	rm -fr *.o $(APP) $(APP)-g .debug_objs
