@@ -8,25 +8,7 @@ main(int argc, char* argv[])
     {
     Environment env(argc,argv);
 
-    {
-    char hostname[256];
-    gethostname(hostname, sizeof(hostname));
-    printfln("Node %d PID %d on %s",env.rank(),getpid(),hostname);
-#ifdef DEBUG
-    //
-    // If compiled in debug mode, require file GO to exist before
-    // proceeding. This is to make it possible to attach a debugger
-    // such as gdb to each thread before the calculation starts.
-    //
-    if(env.nnodes() > 1)
-        {
-        while(!fileExists("GO")) sleep(2);
-        printfln("Process %d found file GO, exiting wait loop",env.rank());
-        }
-    env.barrier();
-    if(env.firstNode()) system("rm -f GO");
-#endif
-    } 
+    parallelDebugWait(env);
 
     int N = 100;
 

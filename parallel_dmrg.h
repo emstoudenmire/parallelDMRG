@@ -246,11 +246,9 @@ pdmrgWorker(Environment const& env,
             MPSt<Tensor> & psi,
             std::vector<Tensor> & Vs,
             HamT & PH,
-            Sweeps sweeps,
+            Sweeps const& sweeps,
             Args args)
     {
-    env.broadcast(sweeps);
-
     //Maximum number of Davidson iterations at boundaries
     auto boundary_niter = args.getInt("BoundaryIter",8);
 
