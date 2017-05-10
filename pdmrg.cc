@@ -28,7 +28,7 @@ main(int argc, char* argv[])
 #endif
     } 
 
-    int N = 99;
+    int N = 100;
 
     SpinOne sites;
     IQMPO H;
@@ -50,7 +50,7 @@ main(int argc, char* argv[])
         psi = IQMPS(state);
         psi.normalize();
 
-        sweeps = Sweeps(10);
+        sweeps = Sweeps(5);
         sweeps.maxm() = 10,20,100,100,200;
         sweeps.cutoff() = 1E-10;
         sweeps.niter() = 2;
