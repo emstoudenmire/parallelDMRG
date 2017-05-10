@@ -106,48 +106,22 @@ pdmrgWorker(Environment const& env,
             Sweeps const& sweeps,
             Args args = Args::global());
 
-
 template <typename Tensor>
-Real 
-parallel_dmrg(Environment const& env,
-              MPSt<Tensor> & psi,
-              MPOt<Tensor> const& H,
-              Sweeps sweeps,
-              Args args = Args::global())
+LocalMPO<Tensor> 
+computeHEnvironment(Environment const& env,
+                    Partition const& P,
+                    MPSt<Tensor> const& psi,
+                    std::vector<Tensor> const& Vs,
+                    MPOt<Tensor> const& H,
+                    Args const& args = Args::global())
     {
-    auto N = H.N();
-    auto Nnode = env.nnodes();
-
-    Partition P;
-    std::vector<Tensor> Vs;
     std::vector<Tensor> LH;
     std::vector<Tensor> RH;
     if(env.firstNode())
         {
-        Vs = std::vector<Tensor>(Nnode);
+        auto Nnode = env.nnodes();
         LH = std::vector<Tensor>(Nnode+1);
         RH = std::vector<Tensor>(Nnode+1);
-        P = Partition(N,Nnode);
-        psi.position(1);
-        auto c = 1;
-        for(int b = 1; b < P.Nb(); ++b)
-            {
-            auto n = P.end(b);
-            //Shift ortho center to one past the end of the b'th block
-            while(c < n+1)
-                {
-                Tensor D;
-                svd(psi.A(c)*psi.A(c+1),psi.Aref(c),D,psi.Aref(c+1));
-                psi.Aref(c+1) *= D;
-                c += 1;
-                }
-            if(c != n+1) Error("c != n+1");
-            auto AA = psi.A(n)*psi.A(n+1);
-            auto& V = Vs.at(b);
-            isvd(AA,psi.Aref(n),V,psi.Aref(n+1));
-            }
-        //^ after this point, psi has multiple ortho centers
-        //  at the right-most site of each block
 
         //Make left Hamiltonian environments
         auto L = Tensor(1.);
@@ -179,19 +153,63 @@ parallel_dmrg(Environment const& env,
             //printfln("RH[%d] = \n%s",b-1,RH[b-1]);
             }
         }
-    env.broadcast(P,psi,Vs,LH,RH);
-    env.broadcast(sweeps);
+    env.broadcast(LH,RH);
 
     auto b = env.rank()+1; //block number of this node
-    auto PH = LocalMPO<Tensor>(H,LH.at(b),P.begin(b)-1,RH.at(b),P.end(b)+1,args);
+    return LocalMPO<Tensor>(H,LH.at(b),P.begin(b)-1,RH.at(b),P.end(b)+1,args);
+    }
 
-    if(b == 1) println(P);
+template<typename Tensor>
+void
+splitWavefunction(Environment const& env,
+                  MPSt<Tensor> & psi, 
+                  Partition & P,
+                  std::vector<Tensor> & Vs)
+    {
+    if(env.firstNode()) 
+        {
+        auto Nnode = env.nnodes();
+        P = Partition(psi.N(),Nnode);
+        println(P);
 
-    auto energy = pdmrgWorker(env,P,psi,Vs,PH,sweeps,args);
+        Vs = std::vector<Tensor>(Nnode);
+        psi.position(1);
+        auto c = 1;
+        for(int b = 1; b < P.Nb(); ++b)
+            {
+            auto n = P.end(b);
+            //Shift ortho center to one past the end of the b'th block
+            while(c < n+1)
+                {
+                Tensor D;
+                svd(psi.A(c)*psi.A(c+1),psi.Aref(c),D,psi.Aref(c+1));
+                psi.Aref(c+1) *= D;
+                c += 1;
+                }
+            if(c != n+1) Error("c != n+1");
+            auto AA = psi.A(n)*psi.A(n+1);
+            auto& V = Vs.at(b);
+            isvd(AA,psi.Aref(n),V,psi.Aref(n+1));
+            }
+        }
+    env.broadcast(P,Vs,psi);
+    }
 
-    return energy;
 
-    } //parallel_dmrg
+template <typename Tensor>
+Real 
+parallel_dmrg(Environment const& env,
+              MPSt<Tensor> & psi,
+              MPOt<Tensor> const& H,
+              Sweeps const& sweeps,
+              Args args = Args::global())
+    {
+    Partition P;
+    std::vector<Tensor> Vs;
+    splitWavefunction(env,psi,P,Vs);
+    auto PH = computeHEnvironment(env,P,psi,Vs,H,args);
+    return pdmrgWorker(env,P,psi,Vs,PH,sweeps,args);
+    }
 
 template<typename Tensor>
 struct Boundary
@@ -228,9 +246,14 @@ pdmrgWorker(Environment const& env,
             MPSt<Tensor> & psi,
             std::vector<Tensor> & Vs,
             HamT & PH,
-            Sweeps const& sweeps,
+            Sweeps sweeps,
             Args args)
     {
+    env.broadcast(sweeps);
+
+    //Maximum number of Davidson iterations at boundaries
+    auto boundary_niter = args.getInt("BoundaryIter",8);
+
     auto b = env.rank()+1;
     auto jl = P.begin(b);
     auto jr = P.end(b);
@@ -273,12 +296,14 @@ pdmrgWorker(Environment const& env,
             auto phi = psi.A(j)*psi.A(j+1);
 
             energy = davidson(PH,phi,args);
+
+            //if(env.rank()+1 == 1) printfln("%s j = %d energy = %.10f",dir==Fromleft?"->":"<-",j,energy);
             
             auto spec = psi.svdBond(j,phi,dir,args);
 
             if(psw.atRight() && dir==Fromleft && bool(mboxR))
                 {
-                printfln("Node %d communicating with right, energy=%s",b,energy);
+                printfln("Node %d communicating with right, previous energy=%.12f",b,energy);
 				auto n = j+1;
 
                 PH.position(n,psi);
@@ -292,8 +317,10 @@ pdmrgWorker(Environment const& env,
                 auto& V = Vs.at(b);
 
                 auto phi = psi.A(n)*V*psi.A(n+1);
+                phi /= norm(phi);
 
-                energy = davidson(PH,phi,args);
+                energy = davidson(PH,phi,{args,"MaxIter=",boundary_niter});
+                printfln("Node %d boundary energy from Davidson = %.12f",b,energy);
 
                 auto spec = isvd(phi,psi.Aref(n),V,psi.Aref(n+1));
 
@@ -306,11 +333,11 @@ pdmrgWorker(Environment const& env,
                 psi.Aref(n+1) *= V;
                 psi.rightLim(n+1);
 
-                printfln("Node %d done with boundary step, energy=%s",b,energy);
+                printfln("Node %d done with boundary step",b);
                 }
             else if(psw.atLeft() && dir==Fromright && bool(mboxL))
                 {
-                printfln("Node %d communicating with left",b);
+                printfln("Node %d communicating with left, previous energy=%.12f",b,energy);
 
                 auto n = j-1;
 
@@ -326,12 +353,12 @@ pdmrgWorker(Environment const& env,
                 PH.shift(n,Fromleft,B.UU);
                 psi.Aref(n+1) = B.A;
                 energy = B.energy;
-                printfln("Node %d done with boundary step",b);
+                printfln("Node %d done with boundary step, energy=%.12f",b,energy);
                 }
             } //for loop over b
         }
 
-    printfln("Block %d energy = %.12f",b,energy);
+    printfln("Block %d final energy = %.12f",b,energy);
 
     return energy;
 
