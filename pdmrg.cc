@@ -40,7 +40,7 @@ main(int argc, char* argv[])
         }
     env.broadcast(sites,H,psi,sweeps);
 
-    auto energy = parallel_dmrg(env,psi,H,sweeps,"Quiet");
+    parallel_dmrg(env,psi,H,sweeps,"Quiet");
 
     return 0;
     }

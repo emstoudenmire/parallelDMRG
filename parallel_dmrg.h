@@ -159,6 +159,68 @@ computeHEnvironment(Environment const& env,
     return LocalMPO<Tensor>(H,LH.at(b),P.begin(b)-1,RH.at(b),P.end(b)+1,args);
     }
 
+template <typename Tensor>
+LocalMPOSet<Tensor> 
+computeHEnvironment(Environment const& env,
+                    Partition const& P,
+                    MPSt<Tensor> const& psi,
+                    std::vector<Tensor> const& Vs,
+                    std::vector<MPOt<Tensor>> const& Hset,
+                    Args const& args = Args::global())
+    {
+    auto nset = Hset.size();
+    auto Nnode = env.nnodes();
+    std::vector<std::vector<Tensor>> LH(Nnode+1);
+    std::vector<std::vector<Tensor>> RH(Nnode+1);
+    if(env.firstNode())
+        {
+        for(auto& lh : LH) lh = std::vector<Tensor>(nset);
+        for(auto& rh : RH) rh = std::vector<Tensor>(nset);
+
+        for(auto n : range(nset))
+            {
+            auto& H = Hset.at(n);
+
+            //Make left Hamiltonian environments
+            auto L = Tensor(1.);
+            LH.at(1).at(n) = L;
+            for(int b = 1; b < P.Nb(); ++b)
+                {
+                for(auto j : range1(P.begin(b),P.end(b)))
+                    {
+                    L = L*psi.A(j)*H.A(j)*dag(prime(psi.A(j)));
+                    }
+                L *= Vs.at(b);
+                L *= dag(prime(Vs.at(b)));
+                LH.at(b+1).at(n) = L;
+                //printfln("LHn[%d] = \n%s",b+1,LHn[b+1]);
+                //printfln("psi.A(%d) = \n%s",P.end(b)+1,psi.A(P.end(b)+1));
+                }
+            //Make right Hamiltonian environments
+            auto R = Tensor(1.);
+            RH.at(P.Nb()).at(n) = R;
+            for(int b = P.Nb(); b > 1; --b)
+                {
+                for(auto j = P.end(b); j >= P.begin(b); --j)
+                    {
+                    R = R*psi.A(j)*H.A(j)*dag(prime(psi.A(j)));
+                    }
+                R *= Vs.at(b-1);
+                R *= dag(prime(Vs.at(b-1)));
+                RH.at(b-1).at(n) = R;
+                //printfln("RHn[%d] = \n%s",b-1,RHn[b-1]);
+                }
+            }
+        }
+    for(auto r : range(Nnode+1))
+        {
+        env.broadcast(LH.at(r),RH.at(r));
+        }
+
+    auto b = env.rank()+1; //block number of this node
+    return LocalMPOSet<Tensor>(Hset,LH.at(b),P.begin(b)-1,RH.at(b),P.end(b)+1,args);
+    }
+
 template<typename Tensor>
 void
 splitWavefunction(Environment const& env,
@@ -196,6 +258,9 @@ splitWavefunction(Environment const& env,
     }
 
 
+//
+// parallel_dmrg with single MPO or IQMPO
+//
 template <typename Tensor>
 Real 
 parallel_dmrg(Environment const& env,
@@ -211,10 +276,28 @@ parallel_dmrg(Environment const& env,
     return pdmrgWorker(env,P,psi,Vs,PH,sweeps,args);
     }
 
-template<typename Tensor>
+//
+// parallel_dmrg with an (implicit) sum of MPOs or IQMPOs
+//
+template <typename Tensor>
+Real 
+parallel_dmrg(Environment const& env,
+              MPSt<Tensor> & psi,
+              std::vector<MPOt<Tensor>> const& Hset,
+              Sweeps const& sweeps,
+              Args args = Args::global())
+    {
+    Partition P;
+    std::vector<Tensor> Vs;
+    splitWavefunction(env,psi,P,Vs);
+    auto PH = computeHEnvironment(env,P,psi,Vs,Hset,args);
+    return pdmrgWorker(env,P,psi,Vs,PH,sweeps,args);
+    }
+
+template<typename Tensor, typename HType = Tensor>
 struct Boundary
     {
-    Tensor HH;
+    HType HH;
     Tensor A;
     Tensor UU;
     Real energy;
@@ -224,18 +307,18 @@ struct Boundary
     void
     write(std::ostream& s) const
         {
-        HH.write(s);
-        A.write(s);
-        UU.write(s);
-        s.write((char*) &energy,sizeof(energy));
+        itensor::write(s,HH);
+        itensor::write(s,A);
+        itensor::write(s,UU);
+        itensor::write(s,energy);
         }
     void
     read(std::istream& s)
         {
-        HH.read(s);
-        A.read(s);
-        UU.read(s);
-        s.read((char*) &energy,sizeof(energy));
+        itensor::read(s,HH);
+        itensor::read(s,A);
+        itensor::read(s,UU);
+        itensor::read(s,energy);
         }
     };
 
@@ -249,8 +332,9 @@ pdmrgWorker(Environment const& env,
             Sweeps const& sweeps,
             Args args)
     {
+    using EdgeType = stdx::decay_t<decltype(PH.L())>;
     //Maximum number of Davidson iterations at boundaries
-    auto boundary_niter = args.getInt("BoundaryIter",8);
+    auto boundary_niter = args.getInt("BoundaryIter",sweeps.niter(1)+6);
 
     auto b = env.rank()+1;
     auto jl = P.begin(b);
@@ -301,16 +385,17 @@ pdmrgWorker(Environment const& env,
 
             if(psw.atRight() && dir==Fromleft && bool(mboxR))
                 {
-                printfln("Node %d communicating with right, previous energy=%.12f",b,energy);
+                auto prev_energy = energy;
+                printfln("Node %d communicating with right, boundary_niter=%d",b,boundary_niter);
 				auto n = j+1;
 
                 PH.position(n,psi);
 
-                Boundary<Tensor> B;
+                Boundary<Tensor,EdgeType> B;
                 mboxR.receive(B);
                 psi.Aref(n+1) = B.A;
                 PH.R(B.HH);
-                B = Boundary<Tensor>(); //to save memory
+                B = Boundary<Tensor,EdgeType>(); //to save memory
 
                 auto& V = Vs.at(b);
 
@@ -318,7 +403,6 @@ pdmrgWorker(Environment const& env,
                 phi /= norm(phi);
 
                 energy = davidson(PH,phi,{args,"MaxIter=",boundary_niter});
-                printfln("Node %d boundary energy from Davidson = %.12f",b,energy);
 
                 auto spec = isvd(phi,psi.Aref(n),V,psi.Aref(n+1));
 
@@ -331,17 +415,18 @@ pdmrgWorker(Environment const& env,
                 psi.Aref(n+1) *= V;
                 psi.rightLim(n+1);
 
-                printfln("Node %d done with boundary step",b);
+                printfln("Node %d done with boundary step, energy %.5f -> %.5f",b,prev_energy,energy);
                 }
             else if(psw.atLeft() && dir==Fromright && bool(mboxL))
                 {
-                printfln("Node %d communicating with left, previous energy=%.12f",b,energy);
+                auto prev_energy = energy;
+                printfln("Node %d communicating with left, boundary_niter=%d",b,boundary_niter);
 
                 auto n = j-1;
 
                 PH.position(n,psi);
 
-                Boundary<Tensor> B;
+                Boundary<Tensor,EdgeType> B;
                 B.A = psi.A(n+1);
                 B.HH = PH.R();
                 mboxL.send(B);
@@ -351,7 +436,7 @@ pdmrgWorker(Environment const& env,
                 PH.shift(n,Fromleft,B.UU);
                 psi.Aref(n+1) = B.A;
                 energy = B.energy;
-                printfln("Node %d done with boundary step, energy=%.12f",b,energy);
+                printfln("Node %d done with boundary step, energy %.5f -> %.5f",b,prev_energy,energy);
                 }
             } //for loop over b
         }
