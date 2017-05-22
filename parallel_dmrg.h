@@ -360,11 +360,6 @@ pdmrgWorker(Environment const& env,
         args.add("Maxm",sweeps.maxm(sw));
         args.add("Noise",sweeps.noise(sw));
         args.add("MaxIter",sweeps.niter(sw));
-        if(sweeps.noise(sw) > 1E-14) 
-            {
-            printfln("Noise for this sweep = %.2E",sweeps.noise(sw));
-            Error("Noise not currently supported in parallel DMRG");
-            }
 
         printfln("Doing sweep %d for node %d",sw,b);
 
@@ -381,7 +376,7 @@ pdmrgWorker(Environment const& env,
 
             //if(env.rank()+1 == 1) printfln("%s j = %d energy = %.10f",dir==Fromleft?"->":"<-",j,energy);
             
-            auto spec = psi.svdBond(j,phi,dir,args);
+            auto spec = psi.svdBond(j,phi,dir,PH,args);
 
             if(psw.atRight() && dir==Fromleft && bool(mboxR))
                 {
