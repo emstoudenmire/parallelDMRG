@@ -90,32 +90,39 @@ Partition(int N, int Nb, int bound_size)
     Nb_(Nb),
     bound_(Nb_)
     {
-    if(Nb <= 2 && (bound_size * Nb) != N)
+    if(Nb <= 2 && (bound_size * Nb) >= N)
         {
         Error("Cannot honor bound_size request");
         }
     //Set requested boundary size
     bound_.at(0) = bound_size;
 
-    //Use same algorithm as above but with
-    //the user-requested boundaries subtracted out
-    //(and 2 fewer blocks)
-    int Neff = N-2*bound_size,
-        step = Neff/(Nb_-2),
-        extra = Neff%(Nb_-2)/2;
-    if(step < 1 || Neff < 1)
+    if(Nb == 2)
         {
-        Print(Neff);
-        Print(step);
-        Print(extra);
-        Error("Ill-formed Partition");
+        bound_.at(1) = N-bound_size;
         }
-    bound_.at(1) = bound_size + step + extra;
-    for(int cut_ = bound_.at(1), j = 2; j < Nb_-1; ++j)
+    else
         {
-        cut_ += step;
-        if(j == Nb_-2) cut_ += extra;
-        bound_.at(j) = cut_;
+        //Use same algorithm as above but with
+        //the user-requested boundaries subtracted out
+        //(and 2 fewer blocks)
+        int Neff = N-2*bound_size,
+            step = Neff/(Nb_-2),
+            extra = Neff%(Nb_-2)/2;
+        if(step < 1 || Neff < 1)
+            {
+            Print(Neff);
+            Print(step);
+            Print(extra);
+            Error("Ill-formed Partition");
+            }
+        bound_.at(1) = bound_size + step + extra;
+        for(int cut_ = bound_.at(1), j = 2; j < Nb_-1; ++j)
+            {
+            cut_ += step;
+            if(j == Nb_-2) cut_ += extra;
+            bound_.at(j) = cut_;
+            }
         }
     }
 
