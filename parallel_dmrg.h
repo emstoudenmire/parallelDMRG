@@ -104,6 +104,7 @@ pdmrgWorker(Environment const& env,
             MPSt<Tensor> & psi,
             HamT & PH,
             Sweeps const& sweeps,
+            Observer & obs,
             Args args = Args::global());
 
 template <typename Tensor>
@@ -226,12 +227,20 @@ void
 splitWavefunction(Environment const& env,
                   MPSt<Tensor> & psi, 
                   Partition & P,
-                  std::vector<Tensor> & Vs)
+                  std::vector<Tensor> & Vs,
+                  Args const& args = Args::global())
     {
     if(env.firstNode()) 
         {
         auto Nnode = env.nnodes();
-        P = Partition(psi.N(),Nnode);
+        if(args.defined("BoundarySize"))
+            {
+            P = Partition(psi.N(),Nnode,args.getInt("BoundarySize"));
+            }
+        else
+            {
+            P = Partition(psi.N(),Nnode);
+            }
         println(P);
 
         Vs = std::vector<Tensor>(Nnode);
@@ -260,6 +269,7 @@ splitWavefunction(Environment const& env,
 
 //
 // parallel_dmrg with single MPO or IQMPO
+// and an observer object
 //
 template <typename Tensor>
 Real 
@@ -267,13 +277,51 @@ parallel_dmrg(Environment const& env,
               MPSt<Tensor> & psi,
               MPOt<Tensor> const& H,
               Sweeps const& sweeps,
+              Observer & obs,
               Args args = Args::global())
     {
     Partition P;
     std::vector<Tensor> Vs;
-    splitWavefunction(env,psi,P,Vs);
+    splitWavefunction(env,psi,P,Vs,args);
     auto PH = computeHEnvironment(env,P,psi,Vs,H,args);
-    return pdmrgWorker(env,P,psi,Vs,PH,sweeps,args);
+    return pdmrgWorker(env,P,psi,Vs,PH,sweeps,obs,args);
+    }
+
+//
+// parallel_dmrg with single MPO or IQMPO
+//
+template <typename Tensor>
+Real 
+parallel_dmrg(Environment const& env,
+              MPSt<Tensor> & psi,
+              MPOt<Tensor> const& H,
+              Sweeps const& sweeps,
+              Args const& args = Args::global())
+    {
+    Observer obs;
+    return parallel_dmrg(env,psi,H,sweeps,obs,args);
+    }
+
+
+
+//
+// parallel_dmrg with an (implicit) sum of MPOs or IQMPOs
+// and an observer object
+//
+template <typename Tensor>
+Real 
+parallel_dmrg(Environment const& env,
+              MPSt<Tensor> & psi,
+              std::vector<MPOt<Tensor>> const& Hset,
+              Sweeps const& sweeps,
+              Observer & obs,
+              Args args = Args::global())
+    {
+    Partition P;
+    std::vector<Tensor> Vs;
+    splitWavefunction(env,psi,P,Vs,args);
+    auto PH = computeHEnvironment(env,P,psi,Vs,Hset,args);
+    return pdmrgWorker(env,P,psi,Vs,PH,sweeps,obs,args);
     }
 
 //
@@ -285,13 +333,10 @@ parallel_dmrg(Environment const& env,
               MPSt<Tensor> & psi,
               std::vector<MPOt<Tensor>> const& Hset,
               Sweeps const& sweeps,
-              Args args = Args::global())
+              Args const& args = Args::global())
     {
-    Partition P;
-    std::vector<Tensor> Vs;
-    splitWavefunction(env,psi,P,Vs);
-    auto PH = computeHEnvironment(env,P,psi,Vs,Hset,args);
-    return pdmrgWorker(env,P,psi,Vs,PH,sweeps,args);
+    Observer obs;
+    return parallel_dmrg(env,psi,Hset,sweeps,obs,args);
     }
 
 template<typename Tensor, typename HType = Tensor>
@@ -330,6 +375,7 @@ pdmrgWorker(Environment const& env,
             std::vector<Tensor> & Vs,
             HamT & PH,
             Sweeps const& sweeps,
+            Observer & obs,
             Args args)
     {
     using EdgeType = stdx::decay_t<decltype(PH.L())>;
@@ -351,6 +397,11 @@ pdmrgWorker(Environment const& env,
     psi.leftLim(jl);
     psi.rightLim(jr);
     psi.position(psw.j);
+
+    //Include MPINode number to use in the observer
+    args.add("BlockStart",jl);
+    args.add("BlockEnd",jr);
+    args.add("MPINode",env.rank()+1);
 
     for(int sw = 1; sw <= sweeps.nsweep(); ++sw)
         {
@@ -377,6 +428,12 @@ pdmrgWorker(Environment const& env,
             //if(env.rank()+1 == 1) printfln("%s j = %d energy = %.10f",dir==Fromleft?"->":"<-",j,energy);
             
             auto spec = psi.svdBond(j,phi,dir,PH,args);
+
+            args.add("AtBond",j);
+            args.add("AtBoundary",false);
+            args.add("Energy",energy);
+            args.add("Direction",dir);
+            obs.measure(args);
 
             if(psw.atRight() && dir==Fromleft && bool(mboxR))
                 {
@@ -410,6 +467,11 @@ pdmrgWorker(Environment const& env,
                 psi.Aref(n+1) *= V;
                 psi.rightLim(n+1);
 
+                args.add("AtBond",n);
+                args.add("AtBoundary",true);
+                args.add("Energy",energy);
+                obs.measure(args);
+
                 printfln("Node %d done with boundary step, energy %.5f -> %.5f",b,prev_energy,energy);
                 }
             else if(psw.atLeft() && dir==Fromright && bool(mboxL))
@@ -433,7 +495,9 @@ pdmrgWorker(Environment const& env,
                 energy = B.energy;
                 printfln("Node %d done with boundary step, energy %.5f -> %.5f",b,prev_energy,energy);
                 }
-            } //for loop over b
+            }
+
+        if(obs.checkDone(args)) break;
         }
 
     printfln("Block %d final energy = %.12f",b,energy);
