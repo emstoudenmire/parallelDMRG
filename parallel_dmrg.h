@@ -412,7 +412,18 @@ pdmrgWorker(Environment const& env,
         args.add("Noise",sweeps.noise(sw));
         args.add("MaxIter",sweeps.niter(sw));
 
-        printfln("Doing sweep %d for node %d",sw,b);
+        if(!PH.doWrite()
+           && args.defined("WriteM")
+           && sweeps.maxm(sw) >= args.getInt("WriteM"))
+            {
+            printfln("\nNode %d turning on write to disk, write_dir = %s",
+                     b,args.getString("WriteDir","./"));
+            //psi.doWrite(true);
+            PH.doWrite(true);
+            }
+
+        printfln("Doing sweep %d for node %d (maxm=%d, cutoff=%.0E, minm=%d)",
+                 sw,b,sweeps.maxm(sw),sweeps.cutoff(sw),sweeps.minm(sw));
 
         for(psw.newSweep(); psw.doingFull(); ++psw)
             {
