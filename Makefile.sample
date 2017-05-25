@@ -3,6 +3,9 @@ ITENSOR_LIBRARY_DIR=$(HOME)/software/itensor
 
 #These are just sample MPI flags and should be adjusted
 #for the specific version and location of MPI on your computer
+#With some MPI distributions, you can use the command
+#  mpicc --showme
+#to see the compiler flags for your MPI installation 
 MPI_CFLAGS=-I/usr/local/Cellar/open-mpi/1.10.1/include
 MPI_LFLAGS=-I/usr/local/Cellar/open-mpi/1.10.1/include -L/usr/local/opt/libevent/lib -L/usr/local/Cellar/open-mpi/1.10.1/lib -lmpi_cxx -lmpi
 
