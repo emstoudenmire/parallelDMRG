@@ -1,11 +1,10 @@
-LIBRARY_DIR=$(HOME)/software/itensor
-include $(LIBRARY_DIR)/this_dir.mk
-include $(LIBRARY_DIR)/options.mk
+#This should point to the location of the ITensor library
+ITENSOR_LIBRARY_DIR=$(HOME)/software/itensor
 
-################################################################
-#Options --------------
-
-HEADERS=parallel_dmrg.h partition.h
+#These are just sample MPI flags and should be adjusted
+#for the specific version and location of MPI on your computer
+MPI_CFLAGS=-I/usr/local/Cellar/open-mpi/1.10.1/include
+MPI_LFLAGS=-I/usr/local/Cellar/open-mpi/1.10.1/include -L/usr/local/opt/libevent/lib -L/usr/local/Cellar/open-mpi/1.10.1/lib -lmpi_cxx -lmpi
 
 ifdef app
 APP=$(app)
@@ -13,13 +12,12 @@ else
 APP=pdmrg
 endif
 
-
-#################################################################
-
-MPI_CFLAGS=-I/usr/local/Cellar/open-mpi/1.10.1/include
-MPI_LFLAGS=-I/usr/local/Cellar/open-mpi/1.10.1/include -L/usr/local/opt/libevent/lib -L/usr/local/Cellar/open-mpi/1.10.1/lib -lmpi_cxx -lmpi
+HEADERS=parallel_dmrg.h partition.h
 
 OBJECTS=$(APP).o
+
+include $(ITENSOR_LIBRARY_DIR)/this_dir.mk
+include $(ITENSOR_LIBRARY_DIR)/options.mk
 
 #Mappings --------------
 GOBJECTS=$(patsubst %,.debug_objs/%, $(OBJECTS))
