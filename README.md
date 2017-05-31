@@ -1,7 +1,11 @@
 # parallelDMRG
 Real-space parallel density matrix renormalization group (DMRG) based on ITensor
 
-Currently must be compiled with the develop branch of ITensor.
+# Installing
+
+To compile the sample code (pdmrg.cc), create your own local copy of the sample Makefile (Makefile.sample) provided. Edit the ITENSOR_LIBRARY_DIR variable to point to where ITensor is located on your computer. Edit MPI_CFLAGS and MPI_LFLAGS to reflect where the MPI libraries are installed on your computer as well. For the MPI flags, you can often use a command such as "mpicxx --showme" to get a printout of the correct compiler flags for your system. Once your Makefile variables are properly set, just run "make" to compile the sample code. 
+
+The main purpose of this software is to provide the header "parallel_dmrg.h" which you can include into your own driver code (modeled on pdmrg.cc) to call the parallel_dmrg routines for your own applications.
 
 # Debugging Parallel Codes
 
