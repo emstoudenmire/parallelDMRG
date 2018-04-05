@@ -402,6 +402,7 @@ pdmrgWorker(Environment const& env,
     args.add("BlockStart",jl);
     args.add("BlockEnd",jr);
     args.add("MPINode",env.rank()+1);
+    int jmid = (jr-jl)/2.;
 
     for(int sw = 1; sw <= sweeps.nsweep(); ++sw)
         {
@@ -439,6 +440,14 @@ pdmrgWorker(Environment const& env,
             //if(env.rank()+1 == 1) printfln("%s j = %d energy = %.10f",dir==Fromleft?"->":"<-",j,energy);
             
             auto spec = psi.svdBond(j,phi,dir,PH,args);
+            
+            if(env.rank()+1 == env.nnodes()/2 
+            && dir == Fromright 
+            && j == jmid)
+                {
+                printfln("Truncation error for sweep %d (node %d) at site %d is terr=%.12f",
+                         sw,b,j,spec.truncerr());
+                }
 
             args.add("AtBond",j);
             args.add("AtBoundary",false);
