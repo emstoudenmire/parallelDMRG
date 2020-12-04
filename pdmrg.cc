@@ -13,8 +13,8 @@ main(int argc, char* argv[])
     int N = 100;
 
     SpinOne sites;
-    IQMPO H;
-    IQMPS psi;
+    MPO H;
+    MPS psi;
     Sweeps sweeps;
     if(env.firstNode())
         {
@@ -26,14 +26,14 @@ main(int argc, char* argv[])
             ampo += 0.5,"S-",j,"S+",j+1;
             ampo +=     "Sz",j,"Sz",j+1;
             }
-        H = IQMPO(ampo);
+        H = MPO(ampo);
         auto state = InitState(sites);
         for(auto n : range1(N)) state.set(n,n%2==1?"Up":"Dn");
-        psi = IQMPS(state);
+        psi = MPS(state);
         psi.normalize();
 
         sweeps = Sweeps(5);
-        sweeps.maxm() = 10,20,100,100,200;
+        sweeps.maxdim() = 10,20,100,100,200;
         sweeps.cutoff() = 1E-10;
         sweeps.niter() = 2;
         println(sweeps);

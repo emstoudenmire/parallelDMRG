@@ -7,12 +7,12 @@
 
 namespace itensor {
 
-template<typename Tensor>
+
 Spectrum
-isvd(Tensor T, 
-     Tensor & A, 
-     Tensor & V, 
-     Tensor & B,
+isvd(ITensor T, 
+     ITensor & A, 
+     ITensor & V, 
+     ITensor & B,
      Args const& args = Args::global())
     {
     auto pinv_cut = args.getReal("PInvCut",1E-12);
@@ -97,35 +97,35 @@ struct ParallelSweeper
 
     };
 
-template <typename Tensor, typename HamT>
+template < typename HamT>
 Real 
 pdmrgWorker(Environment const& env,
             Partition const& P,
-            MPSt<Tensor> & psi,
+            MPS & psi,
+            std::vector<ITensor> & Vs,
             HamT & PH,
             Sweeps const& sweeps,
             Observer & obs,
-            Args args = Args::global());
+            Args args);
 
-template <typename Tensor>
-LocalMPO<Tensor> 
+LocalMPO 
 computeHEnvironment(Environment const& env,
                     Partition const& P,
-                    MPSt<Tensor> const& psi,
-                    std::vector<Tensor> const& Vs,
-                    MPOt<Tensor> const& H,
+                    MPS const& psi,
+                    std::vector<ITensor> const& Vs,
+                    MPO const& H,
                     Args const& args = Args::global())
     {
-    std::vector<Tensor> LH;
-    std::vector<Tensor> RH;
+    std::vector<ITensor> LH;
+    std::vector<ITensor> RH;
     if(env.firstNode())
         {
         auto Nnode = env.nnodes();
-        LH = std::vector<Tensor>(Nnode+1);
-        RH = std::vector<Tensor>(Nnode+1);
+        LH = std::vector<ITensor>(Nnode+1);
+        RH = std::vector<ITensor>(Nnode+1);
 
         //Make left Hamiltonian environments
-        auto L = Tensor(1.);
+        auto L = ITensor(1.);
         LH.at(1) = L;
         for(int b = 1; b < P.Nb(); ++b)
             {
@@ -140,7 +140,7 @@ computeHEnvironment(Environment const& env,
             //printfln("psi.A(%d) = \n%s",P.end(b)+1,psi.A(P.end(b)+1));
             }
         //Make right Hamiltonian environments
-        auto R = Tensor(1.);
+        auto R = ITensor(1.);
         RH.at(P.Nb()) = R;
         for(int b = P.Nb(); b > 1; --b)
             {
@@ -157,33 +157,33 @@ computeHEnvironment(Environment const& env,
     env.broadcast(LH,RH);
 
     auto b = env.rank()+1; //block number of this node
-    return LocalMPO<Tensor>(H,LH.at(b),P.begin(b)-1,RH.at(b),P.end(b)+1,args);
+    return LocalMPO(H,LH.at(b),P.begin(b)-1,RH.at(b),P.end(b)+1,args);
     }
 
-template <typename Tensor>
-LocalMPOSet<Tensor> 
+
+LocalMPOSet 
 computeHEnvironment(Environment const& env,
                     Partition const& P,
-                    MPSt<Tensor> const& psi,
-                    std::vector<Tensor> const& Vs,
-                    std::vector<MPOt<Tensor>> const& Hset,
+                    MPS const& psi,
+                    std::vector<ITensor> const& Vs,
+                    std::vector<MPO> const& Hset,
                     Args const& args = Args::global())
     {
     auto nset = Hset.size();
     auto Nnode = env.nnodes();
-    std::vector<std::vector<Tensor>> LH(Nnode+1);
-    std::vector<std::vector<Tensor>> RH(Nnode+1);
+    std::vector<std::vector<ITensor>> LH(Nnode+1);
+    std::vector<std::vector<ITensor>> RH(Nnode+1);
     if(env.firstNode())
         {
-        for(auto& lh : LH) lh = std::vector<Tensor>(nset);
-        for(auto& rh : RH) rh = std::vector<Tensor>(nset);
+        for(auto& lh : LH) lh = std::vector<ITensor>(nset);
+        for(auto& rh : RH) rh = std::vector<ITensor>(nset);
 
         for(auto n : range(nset))
             {
             auto& H = Hset.at(n);
 
             //Make left Hamiltonian environments
-            auto L = Tensor(1.);
+            auto L = ITensor(1.);
             LH.at(1).at(n) = L;
             for(int b = 1; b < P.Nb(); ++b)
                 {
@@ -198,7 +198,7 @@ computeHEnvironment(Environment const& env,
                 //printfln("psi.A(%d) = \n%s",P.end(b)+1,psi.A(P.end(b)+1));
                 }
             //Make right Hamiltonian environments
-            auto R = Tensor(1.);
+            auto R = ITensor(1.);
             RH.at(P.Nb()).at(n) = R;
             for(int b = P.Nb(); b > 1; --b)
                 {
@@ -219,15 +219,15 @@ computeHEnvironment(Environment const& env,
         }
 
     auto b = env.rank()+1; //block number of this node
-    return LocalMPOSet<Tensor>(Hset,LH.at(b),P.begin(b)-1,RH.at(b),P.end(b)+1,args);
+    return LocalMPOSet(Hset,LH.at(b),P.begin(b)-1,RH.at(b),P.end(b)+1,args);
     }
 
-template<typename Tensor>
+
 void
 splitWavefunction(Environment const& env,
-                  MPSt<Tensor> & psi, 
+                  MPS & psi, 
                   Partition & P,
-                  std::vector<Tensor> & Vs,
+                  std::vector<ITensor> & Vs,
                   Args const& args = Args::global())
     {
     if(env.firstNode()) 
@@ -243,7 +243,7 @@ splitWavefunction(Environment const& env,
             }
         println(P);
 
-        Vs = std::vector<Tensor>(Nnode);
+        Vs = std::vector<ITensor>(Nnode);
         psi.position(1);
         auto c = 1;
         for(int b = 1; b < P.Nb(); ++b)
@@ -252,7 +252,7 @@ splitWavefunction(Environment const& env,
             //Shift ortho center to one past the end of the b'th block
             while(c < n+1)
                 {
-                Tensor D;
+                ITensor D;
                 svd(psi.A(c)*psi.A(c+1),psi.Aref(c),D,psi.Aref(c+1));
                 psi.Aref(c+1) *= D;
                 c += 1;
@@ -271,17 +271,17 @@ splitWavefunction(Environment const& env,
 // parallel_dmrg with single MPO or IQMPO
 // and an observer object
 //
-template <typename Tensor>
+
 Real 
 parallel_dmrg(Environment const& env,
-              MPSt<Tensor> & psi,
-              MPOt<Tensor> const& H,
+              MPS & psi,
+              MPO const& H,
               Sweeps const& sweeps,
               Observer & obs,
               Args args = Args::global())
     {
     Partition P;
-    std::vector<Tensor> Vs;
+    std::vector<ITensor> Vs;
     splitWavefunction(env,psi,P,Vs,args);
     auto PH = computeHEnvironment(env,P,psi,Vs,H,args);
     return pdmrgWorker(env,P,psi,Vs,PH,sweeps,obs,args);
@@ -290,11 +290,11 @@ parallel_dmrg(Environment const& env,
 //
 // parallel_dmrg with single MPO or IQMPO
 //
-template <typename Tensor>
+
 Real 
 parallel_dmrg(Environment const& env,
-              MPSt<Tensor> & psi,
-              MPOt<Tensor> const& H,
+              MPS & psi,
+              MPO const& H,
               Sweeps const& sweeps,
               Args const& args = Args::global())
     {
@@ -308,17 +308,17 @@ parallel_dmrg(Environment const& env,
 // parallel_dmrg with an (implicit) sum of MPOs or IQMPOs
 // and an observer object
 //
-template <typename Tensor>
+
 Real 
 parallel_dmrg(Environment const& env,
-              MPSt<Tensor> & psi,
-              std::vector<MPOt<Tensor>> const& Hset,
+              MPS & psi,
+              std::vector<MPO> const& Hset,
               Sweeps const& sweeps,
               Observer & obs,
               Args args = Args::global())
     {
     Partition P;
-    std::vector<Tensor> Vs;
+    std::vector<ITensor> Vs;
     splitWavefunction(env,psi,P,Vs,args);
     auto PH = computeHEnvironment(env,P,psi,Vs,Hset,args);
     return pdmrgWorker(env,P,psi,Vs,PH,sweeps,obs,args);
@@ -327,11 +327,11 @@ parallel_dmrg(Environment const& env,
 //
 // parallel_dmrg with an (implicit) sum of MPOs or IQMPOs
 //
-template <typename Tensor>
+
 Real 
 parallel_dmrg(Environment const& env,
-              MPSt<Tensor> & psi,
-              std::vector<MPOt<Tensor>> const& Hset,
+              MPS & psi,
+              std::vector<MPO> const& Hset,
               Sweeps const& sweeps,
               Args const& args = Args::global())
     {
@@ -339,12 +339,12 @@ parallel_dmrg(Environment const& env,
     return parallel_dmrg(env,psi,Hset,sweeps,obs,args);
     }
 
-template<typename Tensor, typename HType = Tensor>
+template< typename HType = ITensor>
 struct Boundary
     {
     HType HH;
-    Tensor A;
-    Tensor UU;
+    ITensor A;
+    ITensor UU;
     Real energy;
 
     Boundary() : energy(0) { }
@@ -367,12 +367,12 @@ struct Boundary
         }
     };
 
-template <typename Tensor, typename HamT>
+template < typename HamT>
 Real 
 pdmrgWorker(Environment const& env,
             Partition const& P,
-            MPSt<Tensor> & psi,
-            std::vector<Tensor> & Vs,
+            MPS & psi,
+            std::vector<ITensor> & Vs,
             HamT & PH,
             Sweeps const& sweeps,
             Observer & obs,
@@ -408,14 +408,14 @@ pdmrgWorker(Environment const& env,
         {
         args.add("Sweep",sw);
         args.add("Cutoff",sweeps.cutoff(sw));
-        args.add("Minm",sweeps.minm(sw));
-        args.add("Maxm",sweeps.maxm(sw));
+        args.add("MinDim",sweeps.mindim(sw));
+        args.add("MaxDim",sweeps.maxdim(sw));
         args.add("Noise",sweeps.noise(sw));
         args.add("MaxIter",sweeps.niter(sw));
 
         if(!PH.doWrite()
            && args.defined("WriteM")
-           && sweeps.maxm(sw) >= args.getInt("WriteM"))
+           && sweeps.maxdim(sw) >= args.getInt("WriteM"))
             {
             printfln("\nNode %d turning on write to disk, write_dir = %s",
                      b,args.getString("WriteDir","./"));
@@ -423,8 +423,8 @@ pdmrgWorker(Environment const& env,
             PH.doWrite(true);
             }
 
-        printfln("Doing sweep %d for node %d (maxm=%d, cutoff=%.0E, minm=%d)",
-                 sw,b,sweeps.maxm(sw),sweeps.cutoff(sw),sweeps.minm(sw));
+        printfln("Doing sweep %d for node %d (maxm=%d, cutoff=%.0E, mindim=%d)",
+                 sw,b,sweeps.maxdim(sw),sweeps.cutoff(sw),sweeps.mindim(sw));
 
         for(psw.newSweep(); psw.doingFull(); ++psw)
             {
@@ -463,11 +463,11 @@ pdmrgWorker(Environment const& env,
 
                 PH.position(n,psi);
 
-                Boundary<Tensor,EdgeType> B;
+                Boundary<EdgeType> B;
                 mboxR.receive(B);
                 psi.Aref(n+1) = B.A;
                 PH.R(B.HH);
-                B = Boundary<Tensor,EdgeType>(); //to save memory
+                B = Boundary<EdgeType>(); //to save memory
 
                 auto& V = Vs.at(b);
 
@@ -503,7 +503,7 @@ pdmrgWorker(Environment const& env,
 
                 PH.position(n,psi);
 
-                Boundary<Tensor,EdgeType> B;
+                Boundary<EdgeType> B;
                 B.A = psi.A(n+1);
                 B.HH = PH.R();
                 mboxL.send(B);
