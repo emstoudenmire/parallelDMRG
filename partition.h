@@ -111,9 +111,9 @@ Partition(int N, int Nb, int bound_size)
             extra = Neff%(Nb_-2)/2;
         if(step < 1 || Neff < 1)
             {
-            Print(Neff);
-            Print(step);
-            Print(extra);
+            print(Neff);
+            print(step);
+            print(extra);
             Error("Ill-formed Partition");
             }
         bound_.at(1) = bound_size + step + extra;
