@@ -106,7 +106,7 @@ pdmrgWorker(Environment const& env,
             HamT & PH,
             Sweeps const& sweeps,
             Observer & obs,
-            Args args=Args::global());
+            Args args = Args::global());
 
 LocalMPO 
 computeHEnvironment(Environment const& env,
