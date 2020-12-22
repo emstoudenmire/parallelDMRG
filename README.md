@@ -1,9 +1,10 @@
 # parallelDMRG
-Real-space parallel density matrix renormalization group (DMRG) based on ITensor
+
+Real-space parallel density matrix renormalization group (DMRG) based on ITensor.
+
+This code is based on the paper ["Real-Space Parallel Density Matrix Renormalization Group"](https://journals.aps.org/prb/abstract/10.1103/PhysRevB.87.155137), Phys. Rev. B, 87, [155137](https://journals.aps.org/prb/abstract/10.1103/PhysRevB.87.155137) (2013) [arxiv:1301.3494](https://arxiv.org/abs/1301.3494). See also [this paper](https://arxiv.org/abs/1912.06127) on parallelizing time evolution of matrix product states.
 
 # Installing
-
-**Currently this code requires the version 2.x (v2 git branch) series of the C++ implementation of ITensor.** If you are interested in upgrading this code to become compatible with the 3.x series, please contact support@itensor.org if you have technical questions, and consult the [version 2 to 3 upgrade guide](http://itensor.org/docs.cgi?vers=cppv3&page=upgrade2to3).
 
 To compile the sample code (pdmrg.cc), create your own local copy of the sample Makefile (Makefile.sample) provided. Edit the ITENSOR_LIBRARY_DIR variable to point to where ITensor is located on your computer. Edit MPI_CFLAGS and MPI_LFLAGS to reflect where the MPI libraries are installed on your computer as well. For the MPI flags, you can often use a command such as "mpicxx --showme" to get a printout of the correct compiler flags for your system. Once your Makefile variables are properly set, just run "make" to compile the sample code. 
 
@@ -20,3 +21,7 @@ in separate terminal windows. Finally, make an empty file named `GO` in the
 same directory that your code is running in. The program will see this file
 and begin running. After the program starts running and a bug is encountered, 
 you can see the backtrace in the debugger attached to whichever process encountered the bug.
+
+# Acknowledgements
+
+Thanks to David Jansen for upgrading the code to work with version 3 of ITensor.
