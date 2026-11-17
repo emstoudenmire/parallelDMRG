@@ -476,7 +476,7 @@ pdmrgWorker(Environment const& env,
 
                 energy = davidson(PH,phi,{args,"MaxIter=",boundary_niter});
 
-                auto spec = isvd(phi,psi.Aref(n),V,psi.Aref(n+1));
+                auto spec = isvd(phi,psi.Aref(n),V,psi.Aref(n+1),args);
 
                 B.HH = PH.L();
                 B.UU = psi.A(n)*V;
