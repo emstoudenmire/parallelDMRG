@@ -182,7 +182,7 @@ operator<<(std::ostream& s, const Partition& p)
     if(p.Nb() == 0) s << " (empty)\n";
     for(int b = 1; b <= p.Nb(); ++b)
         {
-        s << format("%d (%d,%d) %d\n",b,p.begin(b),p.end(b),p.size(b));
+        s << tinyformat::format("%d (%d,%d) %d\n",b,p.begin(b),p.end(b),p.size(b));
         }
     s << std::endl;
     return s;
